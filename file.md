@@ -1,14 +1,4 @@
-```python
-#coding:utf8
-
-# Copyright 2019 longpeng2008. All Rights Reserved.
-# Licensed under the Apache License, Version 2.0 (the "License");
-# If you find any problem,please contact us
-#
-#     longpeng2008to2012@gmail.com 
-#
-# or create issues
-# =============================================================================
+'''python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -56,4 +46,9 @@ if __name__ == '__main__':
     print(model)
 
     summary(model, (3, 48, 48))
-```
+'''
+1. 给你设置了自动保存
+2. 你动了代码，我给你备份的能
+3. 在vscode服务器跑python代码的两个办法
+- 终端 python name.py 
+- 如果要启动小三角形，一定要确保下面的这个地方是torch环境，给你装好的你要用啊

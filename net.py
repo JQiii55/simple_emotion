@@ -9,49 +9,53 @@
 # or create issues
 # =============================================================================
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from torchsummary import summary
+import torch.nn as nn       # 有学习参数用这个
+import torch.nn.functional as F  # 没有学习参数用这个
+import numpy as np            
+from torchsummary import summary 
 
 ## 3层卷积神经网络simpleconv3定义
 ## 包括3个卷积层，3个BN层，3个ReLU激活层，3个全连接层
 
 class simpleconv3(nn.Module):
-    ## 初始化函数
+    # 初始化参数
     def __init__(self,nclass):
         super(simpleconv3,self).__init__()
-        self.conv1 = nn.Conv2d(3, 12, 3, 2) #输入图片大小为3*48*48，输出特征图大小为12*23*23，卷积核大小为3*3，步长为2
+        self.conv1 = nn.Conv2d(3,12,3,2) #输入图片大小为3*48*48，输出特征图大小为12*23*23，卷积核大小为3*3，步长为2
         self.bn1 = nn.BatchNorm2d(12)
-        self.conv2 = nn.Conv2d(12, 24, 3, 2) #输入图片大小为12*23*23，输出特征图大小为24*11*11，卷积核大小为3*3，步长为2
-        self.bn2 = nn.BatchNorm2d(24)
-        self.conv3 = nn.Conv2d(24, 48, 3, 2) #输入图片大小为24*11*11，输出特征图大小为48*5*5，卷积核大小为3*3，步长为2
-        self.bn3 = nn.BatchNorm2d(48)
-        self.fc1 = nn.Linear(48 * 5 * 5 , 1200) #输入向量长为48*5*5=1200，输出向量长为1200
-        self.fc2 = nn.Linear(1200 , 128) #输入向量长为1200，输出向量长为128
-        self.fc3 = nn.Linear(128 , nclass) #输入向量长为128，输出向量长为nclass，等于类别数
-
-    ## 前向函数
-    def forward(self, x):
-        ## relu函数，不需要进行实例化，直接进行调用
-        ## conv，fc层需要调用nn.Module进行实例化
+        self.conv2 = nn.Conv2d(12,24,3,2)  #输入图片大小为12*23*23，输出特征图大小为24*11*11，卷积核大小为3*3，步长为2
+        self.bn2 = nn.BatchNorm2d(24) #24 输入数据的通道数（特征数）
+        self.conv3 = nn.Conv2d(24,48,3,2) #输入图片大小为24*11*11，输出特征图大小为48*5*5，卷积核大小为3*3，步长为2
+        self.bn3 = nn.BatchNorm2d(48) 
+        self.fc1 = nn.Linear(48*5*5,1200) # 全连接层，输入向量长为48*5*5=1200，输出向量长1200
+        self.fc2 = nn.Linear(1200,128) #输入向量长为1200，输出向量长为128
+        self.fc3 = nn.Linear(128,nclass) ##输入向量长为128，输出向量长为nclass，等于类别数
+    
+    #前向函数
+    def forward(self,x):
+        # relu函数，不需要进行实例化，直接进行调用
+        # conv，fc层需要调用nn.Module进行实例化
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
-        x = x.view(-1 , 48 * 5 * 5) 
+        x = x.view(-1,48*5*5) # 将x重塑为一个三维张量，-1表示自动推断x的大小
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
-if __name__ == '__main__':
+    
+if __name__ =='__main__':
+    # 读代码是从这里开始读的
+    # 这样子读代码的抄代码的
     import torch
-    x = torch.randn(1,3,48,48)
+    x = torch.randn(1,3,48,48) #创建张量x
     model = simpleconv3(4)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    x = x.to(device)
-    y = model(x)
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    model.to(device) #将模型model加载到指定的设备device上。device可以是CPU或GPU
+    x = x.to(device) # 将张量x也加载到指定的设备device上，以便与模型model在同一设备上进行计算。
+    y = model(x) # 调用模型model的forward方法,y 是预测值
     print(model)
+    
+    summary(model,(3,48,48)) #打印显示网络结构和参数
+   
 
-    summary(model, (3, 48, 48))
