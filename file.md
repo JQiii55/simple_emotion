@@ -1,54 +1,137 @@
 '''python
+from __future__ import print_function, division
+
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
+import torch.optim as optim
+from torch.optim import lr_scheduler
+import torchvision
+from torchvision import datasets, models, transforms
 from torchsummary import summary
+import os
+from net import simpleconv3
 
-## 3层卷积神经网络simpleconv3定义
-## 包括3个卷积层，3个BN层，3个ReLU激活层，3个全连接层
+## 使用tensorboardX进行可视化
+from tensorboardX import SummaryWriter
+writer = SummaryWriter('logs') ## 创建一个SummaryWriter的示例，默认目录名字为runs
 
-class simpleconv3(nn.Module):
-    ## 初始化函数
-    def __init__(self,nclass):
-        super(simpleconv3,self).__init__()
-        self.conv1 = nn.Conv2d(3, 12, 3, 2) #输入图片大小为3*48*48，输出特征图大小为12*23*23，卷积核大小为3*3，步长为2
-        self.bn1 = nn.BatchNorm2d(12)
-        self.conv2 = nn.Conv2d(12, 24, 3, 2) #输入图片大小为12*23*23，输出特征图大小为24*11*11，卷积核大小为3*3，步长为2
-        self.bn2 = nn.BatchNorm2d(24)
-        self.conv3 = nn.Conv2d(24, 48, 3, 2) #输入图片大小为24*11*11，输出特征图大小为48*5*5，卷积核大小为3*3，步长为2
-        self.bn3 = nn.BatchNorm2d(48)
-        self.fc1 = nn.Linear(48 * 5 * 5 , 1200) #输入向量长为48*5*5=1200，输出向量长为1200
-        self.fc2 = nn.Linear(1200 , 128) #输入向量长为1200，输出向量长为128
-        self.fc3 = nn.Linear(128 , nclass) #输入向量长为128，输出向量长为nclass，等于类别数
+## 训练主函数
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
+    for epoch in range(num_epochs):
+        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+        for phase in ['train', 'val']:
+            if phase == 'train':
+                scheduler.step()
+                model.train(True)  ## 设置为训练模式
+            else:
+                model.train(False)  ## 设置为验证模式
 
-    ## 前向函数
-    def forward(self, x):
-        ## relu函数，不需要进行实例化，直接进行调用
-        ## conv，fc层需要调用nn.Module进行实例化
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = x.view(-1 , 48 * 5 * 5) 
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+            running_loss = 0.0 ##损失变量
+            running_accs = 0.0 ##精度变量
+            number_batch = 0 ##
+
+            ## 从dataloaders中获得数据
+            for data in dataloaders[phase]:
+                inputs, labels = data 
+                if use_gpu:
+                    inputs = inputs.cuda()
+                    labels = labels.cuda()
+
+                optimizer.zero_grad() ##清空梯度
+                outputs = model(inputs) ##前向运行
+                _, preds = torch.max(outputs.data, 1) ##使用max()函数对输出值进行操作，得到预测值索引
+                loss = criterion(outputs, labels) ##计算损失
+                if phase == 'train':
+                    loss.backward() ##误差反向传播
+                    optimizer.step() ##参数更新
+
+                running_loss += loss.data.item()
+                running_accs += torch.sum(preds == labels).item()
+                number_batch += 1
+
+            ## 得到每一个epoch的平均损失与精度
+            epoch_loss = running_loss / number_batch
+            epoch_acc = running_accs / dataset_sizes[phase]
+            
+            ## 收集精度和损失用于可视化
+            if phase == 'train':
+                writer.add_scalar('data/trainloss', epoch_loss, epoch)
+                writer.add_scalar('data/trainacc', epoch_acc, epoch)
+            else:
+                writer.add_scalar('data/valloss', epoch_loss, epoch)
+                writer.add_scalar('data/valacc', epoch_acc, epoch)
+
+            print('{} Loss: {:.4f} Acc: {:.4f}'.format(
+                phase, epoch_loss, epoch_acc))
+
+    writer.close()
+    return model
 
 if __name__ == '__main__':
-    import torch
-    x = torch.randn(1,3,48,48)
-    model = simpleconv3(4)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    x = x.to(device)
-    y = model(x)
+
+    image_size = 64 ##图像统一缩放大小
+    crop_size = 48 ##图像裁剪大小，即训练输入大小
+    nclass = 4 ##分类类别数
+    model = simpleconv3(nclass) ##创建模型
+    data_dir = './data' ##数据目录
+    
+    ## 模型缓存接口
+    if not os.path.exists('models'):
+        os.mkdir('models')
+
+    ## 检查GPU是否可用，如果是使用GPU，否使用CPU
+    use_gpu = torch.cuda.is_available()
+    if use_gpu:
+        model = model.cuda()
     print(model)
 
-    summary(model, (3, 48, 48))
-'''
-1. 给你设置了自动保存
-2. 你动了代码，我给你备份的能
-3. 在vscode服务器跑python代码的两个办法
-- 终端 python name.py 
-- 如果要启动小三角形，一定要确保下面的这个地方是torch环境，给你装好的你要用啊
+    ## 创建数据预处理函数，训练预处理包括随机裁剪缩放、随机翻转、归一化，验证预处理包括中心裁剪，归一化
+
+    # 修改版
+    data_transforms = {
+    'train': transforms.Compose([
+        transforms.RandomResizedCrop(48, scale=(0.8, 1.0)),
+        transforms.RandomHorizontalFlip(),
+        transforms.CenterCrop(48), # 添加 CenterCrop 操作
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ]),
+    'val': transforms.Compose([
+        transforms.Resize(image_size),
+        transforms.CenterCrop(crop_size),
+        transforms.ToTensor(),
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ]),
+}
+
+
+
+    # ## 使用torchvision的dataset ImageFolder接口读取数据
+   
+
+
+    # 修改版本
+    data_dir = '/root/cqy/simpleconv3_emotion/data'
+    image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
+                                            data_transforms[x])
+                    for x in ['train', 'val']}
+    dataloaders = {x: torch.utils.data.DataLoader(image_datasets[x], batch_size=32,
+                                                shuffle=True, num_workers=4)
+                for x in ['train', 'val']}
+
+
+    ## 获得数据集大小
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val']}
+
+    ## 优化目标使用交叉熵，优化方法使用带动量项的SGD，学习率迭代策略为step，每隔100个epoch，变为原来的0.1倍
+    criterion = nn.CrossEntropyLoss()
+    optimizer_ft = optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
+    step_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=100, gamma=0.1)
+
+    model = train_model(model=model,
+                           criterion=criterion,
+                           optimizer=optimizer_ft,
+                           scheduler=step_lr_scheduler,
+                           num_epochs=300)
+
+    torch.save(model.state_dict(),'models/model.pt')
